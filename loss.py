@@ -6,4 +6,4 @@ class MSE:
         return np.mean(error ** 2)
     
     def backward(self):
-        return 2 * self.error 
+        return 2 * (1 / self.error.shape[-1]) * self.error 
