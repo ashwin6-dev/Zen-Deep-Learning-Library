@@ -1,4 +1,15 @@
 import numpy as np
+import loss
+import optim
+np.random.seed(0)
+
+class Activation:
+    def __init__(self):
+        pass
+
+class Layer:
+    def __init__(self):
+        pass
 
 class Model: 
     def __init__(self, layers):
@@ -11,35 +22,34 @@ class Model:
 
         return output
 
-    def train(self, x, y, optim, loss, epochs=10):
+    def train(self, x, y, optim = optim.SGD(), loss=loss.MSE(), epochs=10):
         for epoch in range(1, epochs + 1):
             pred = self.__call__(x)
-            error = y - pred
+            error = pred - y
             l = loss(error)
-            optim(self, l)
+            optim(self, loss)
             print (f"epoch {epoch} loss {l}")
 
-class Linear:
+class Linear(Layer):
     def __init__(self, units):
         self.units = units
-        self.w = False
-        self.b = False
+        self.initialized = False
 
     def __call__(self, x):
         self.input = x
-        if not self.w:
+        if not self.initialized:
             self.w = np.random.randn(self.input.shape[-1], self.units)
-        if not self.b:
             self.b = np.random.randn(self.units)
+            self.initialized = True
 
         return self.input @ self.w + self.b
 
     def backward(self, grad):
         self.w_gradient = self.input.T @ grad
-        self.b_gradient = grad
+        self.b_gradient = np.sum(grad, axis=0)
         return grad @ self.w.T
 
-class Sigmoid:
+class Sigmoid(Activation):
     def __call__(self, x):
         self.output = 1 / (1 + np.exp(-x))
 
@@ -48,7 +58,7 @@ class Sigmoid:
     def backward(self, grad):
         return grad * (self.output * (1 - self.output))
 
-class Relu:
+class Relu(Activation):
     def __call__(self, x):
         self.output = np.maximum(0, x)   
         return self.output
@@ -56,7 +66,7 @@ class Relu:
     def backward(self, grad):
         return grad * np.clip(self.output, 0, 1)
 
-class Softmax:
+class Softmax(Activation):
     def __call__(self, x):
         self.output = np.exp(x) / np.sum(np.exp(x))
         return self.output
@@ -66,7 +76,7 @@ class Softmax:
 
         return grad * (np.diagflat(reshape_output) - np.dot(reshape_output, reshape_output.T))
 
-class Tanh:
+class Tanh(Activation):
     def __call__(self, x):
         self.output = np.tanh(x)
 

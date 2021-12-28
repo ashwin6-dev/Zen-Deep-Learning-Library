@@ -1,4 +1,6 @@
 import layers
+import loss
+import optim
 import numpy as np
 
 
@@ -12,5 +14,7 @@ net = layers.Model([
     layers.Linear(1),
     layers.Sigmoid()
 ])
+
+net.train(x, y, optim=optim.SGD(lr=0.01), loss=loss.MSE(), epochs=100)
 
 print (net(x))
