@@ -12,5 +12,5 @@ class SGD:
             grad = layer.backward(grad)
             
             if isinstance(layer, layers.Layer):
-                layer.w -= layer.w_gradient
-                layer.b -= layer.b_gradient
+                layer.w -= layer.w_gradient * self.lr
+                layer.b -= layer.b_gradient * self.lr

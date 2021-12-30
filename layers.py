@@ -38,8 +38,8 @@ class Linear(Layer):
     def __call__(self, x):
         self.input = x
         if not self.initialized:
-            self.w = np.random.randn(self.input.shape[-1], self.units)
-            self.b = np.random.randn(self.units)
+            self.w = np.random.rand(self.input.shape[-1], self.units)
+            self.b = np.random.rand(self.units)
             self.initialized = True
 
         return self.input @ self.w + self.b
@@ -68,13 +68,19 @@ class Relu(Activation):
 
 class Softmax(Activation):
     def __call__(self, x):
-        self.output = np.exp(x) / np.sum(np.exp(x))
+        self.input = x
+        exps = np.exp(x - np.max(x))
+        self.output = exps / np.sum(exps, axis=1, keepdims=True)
         return self.output
     
     def backward(self, grad):
-        reshape_output = self.output.reshape(-1, 1)
-
-        return grad * (np.diagflat(reshape_output) - np.dot(reshape_output, reshape_output.T))
+        m, n = self.output.shape
+        p = self.output
+        tensor1 = np.einsum('ij,ik->ijk', p, p)  # (m, n, n)
+        tensor2 = np.einsum('ij,jk->ijk', p, np.eye(n, n))  # (m, n, n)
+        dSoftmax = tensor2 - tensor1
+        dz = np.einsum('ijk,ik->ij', dSoftmax, grad)
+        return dz
 
 class Tanh(Activation):
     def __call__(self, x):
