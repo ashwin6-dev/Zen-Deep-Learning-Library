@@ -9,7 +9,7 @@ y = np.array([[0, 1], [1, 0], [1, 0], [0, 1]])
 
 net = layers.Model([
     layers.Linear(8),
-    layers.Sigmoid(),
+    layers.Relu(),
     layers.Linear(4),
     layers.Sigmoid(),
     layers.Linear(2),
