@@ -76,10 +76,10 @@ class Softmax(Activation):
     def backward(self, grad):
         m, n = self.output.shape
         p = self.output
-        tensor1 = np.einsum('ij,ik->ijk', p, p)  # (m, n, n)
-        tensor2 = np.einsum('ij,jk->ijk', p, np.eye(n, n))  # (m, n, n)
+        tensor1 = np.einsum('ij,ik->ijk', p, p)
+        tensor2 = np.einsum('ij,jk->ijk', p, np.eye(n, n))
         dSoftmax = tensor2 - tensor1
-        dz = np.einsum('ijk,ik->ij', dSoftmax, grad)
+        dz = np.einsum('ijk,ik->ij', dSoftmax, grad) 
         return dz
 
 class Tanh(Activation):
