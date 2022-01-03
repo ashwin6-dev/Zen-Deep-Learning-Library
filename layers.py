@@ -25,8 +25,7 @@ class Model:
     def train(self, x, y, optim = optim.SGD(), loss=loss.MSE(), epochs=10):
         for epoch in range(1, epochs + 1):
             pred = self.__call__(x)
-            error = pred - y
-            l = loss(error)
+            l = loss(pred, y)
             optim(self, loss)
             print (f"epoch {epoch} loss {l}")
 
