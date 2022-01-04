@@ -1,4 +1,5 @@
 import numpy as np
+import pickle
 import loss
 import optim
 np.random.seed(0)
@@ -28,6 +29,12 @@ class Model:
             l = loss(pred, y)
             optim(self, loss)
             print (f"epoch {epoch} loss {l}")
+
+def save(model, fname):
+    pickle.dump(model, open(fname, "wb"))
+
+def load(fname):
+    return pickle.load(open(fname, "rb"))
 
 class Linear(Layer):
     def __init__(self, units):
