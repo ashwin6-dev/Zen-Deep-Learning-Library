@@ -10,6 +10,10 @@ class MSE:
     def backward(self):
         return 2 * (1 / self.error.shape[-1]) * self.error 
 
-class CrossEntropy:
+class CategoricalCrossentropy:
     def __call__(self, pred, y):
-        pass
+        self.error = pred - y
+        return -np.sum(np.log(pred) * y)
+
+    def backward(self):
+        return self.error
