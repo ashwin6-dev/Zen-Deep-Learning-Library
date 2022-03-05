@@ -1,19 +1,11 @@
-#loss.py
-
 import numpy as np
+import autodiff as ad
 
-class MSE:
-    def __call__(self, pred, y):
-        self.error = pred - y
-        return np.mean(self.error ** 2)
+def MSE(pred, real):
+    loss = ad.reduce_mean((pred - real)**2)
+    return loss
+
+def categorical_crossentropy(pred, real):
+    loss = -1 * ad.reduce_mean(real * ad.log(pred))
     
-    def backward(self):
-        return 2 * (1 / self.error.shape[-1]) * self.error 
-
-class CategoricalCrossentropy:
-    def __call__(self, pred, y):
-        self.error = pred - y
-        return -np.sum(np.log(pred) * y)
-
-    def backward(self):
-        return self.error
+    return loss
