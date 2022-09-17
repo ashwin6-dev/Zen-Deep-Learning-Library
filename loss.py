@@ -1,10 +1,11 @@
-import jax.numpy as np
+import numpy as np
+import autodiff as ad
 
-def MeanSquaredError(real, pred):
-    return np.mean((real - pred)**2)
+def MSE(pred, real):
+    loss = ad.reduce_mean((pred - real)**2)
+    return loss
 
-def RootMeanSquaredError(real, pred):
-    return np.sqrt(np.mean((real - pred)**2))
-
-def CategoricalCrossentropy(real, pred):
-    return -np.mean(real * np.log(pred))
+def categorical_crossentropy(pred, real):
+    loss = -1 * ad.reduce_mean(real * ad.log(pred))
+    
+    return loss

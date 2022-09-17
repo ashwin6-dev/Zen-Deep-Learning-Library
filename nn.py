@@ -1,132 +1,116 @@
-import jax.numpy as np
-import functools
-from jax import grad, random, value_and_grad, vmap, jit
-from loss import *
-from optim import *
+import autodiff as ad
+import numpy as np
+import loss 
+import optim
 
-seed = random.PRNGKey(345)
+np.random.seed(345)
 
 class Layer:
     def __init__(self):
         pass
 
 class Linear(Layer):
-    def __init__(self, units, input_shape=None, activation = lambda x : x):
+    def __init__(self, units):
         self.units = units
-        self.input_shape = input_shape
-        self.activation = activation
+        self.w = None
+        self.b = None
 
-    def forward(self, inp, params):
-        W = params[0]
-        b = params[1]
+    def __call__(self, x):
+        if self.w is None:
+            self.w = ad.Tensor(np.random.uniform(size=(x.shape[-1], self.units), low=-1/np.sqrt(x.shape[-1]), high=1/np.sqrt(x.shape[-1])))
+            #self.w = ad.Tensor(np.random.normal(size=(x.shape[-1], self.units)))
+            self.b = ad.Tensor(np.zeros((1, self.units)))
 
-        if self.input_shape is None:
-            self.input_shape = inp.shape
+        return x @ self.w + self.b
 
-        return self.activation(np.matmul(inp, W) + b)
+    def update(self, optim):
+        self.w.value -= optim.delta(self.w)
+        self.b.value -= optim.delta(self.b)
 
-    def init_params(self):
-        return [random.uniform(seed, (self.input_shape[-1], self.units), minval=-1/np.sqrt(self.input_shape[-1]), maxval=1/np.sqrt(self.input_shape[-1])), np.zeros((1, self.units))]
+        self.w.grads = []
+        self.w.dependencies = []
+        self.b.grads = []
+        self.b.dependencies = []
 
 class RNN(Layer):
-    def __init__(self, units, input_shape=None, hidden_dim=64, activation = lambda x : x):
+    def __init__(self, units, hidden_dim, return_sequences=False):
         self.units = units
-        self.input_shape = input_shape
-        self.activation = activation
         self.hidden_dim = hidden_dim
-        self.Wh = Linear(hidden_dim, input_shape=(None, input_shape[-1] + hidden_dim), activation=tanh)
-        self.Wy = Linear(units, input_shape=(None, hidden_dim), activation=activation)
-        
-    def one_forward(self, x, params):
-        state = np.zeros((1, self.hidden_dim))
-        
+        self.return_sequences = return_sequences
+        self.U = None
+        self.W = None
+        self.V = None
+
+    def one_forward(self, x):
+        x = np.expand_dims(x, axis=1)
+        state = np.zeros((x.shape[-1], self.hidden_dim))
         for time_step in x:
-            time_step = np.expand_dims(time_step, axis=0)
-            concat = np.concatenate([time_step, state], axis=1)
-            state = self.Wh.forward(concat, params)
+            mul_u = self.U(time_step)
+            mul_w = self.W(state)
+            state = Tanh()(mul_u + mul_w)
 
+        state.value = state.value.squeeze()
         return state
+
+    def __call__(self, x):
+        if self.U is None:
+            self.U = Linear(self.hidden_dim)
+            self.W = Linear(self.hidden_dim)
+            self.V = Linear(self.units)
+
+        states = []
+        for seq in x:
+            state = self.one_forward(seq)
+            states.append(state)
         
-    def forward(self, x, params):
-        vec_one_forward = vmap(self.one_forward, in_axes=[0, None], out_axes=0)
-        final_state = np.sum(vec_one_forward(x, params[0]), axis=1)
+        s = ad.stack(states)
+        return s
 
-        return self.Wy.forward(final_state, params[1])
+    def update(self, optim):
+        self.U.update(optim) 
+        self.W.update(optim)
+        
+        if self.return_sequences:
+            self.V.update(optim)
 
-    def init_params(self):
-        return self.Wh.init_params(), self.Wy.init_params()
+class Sigmoid:
+    def __call__(self, x):
+        return 1 / (1 + np.e ** (-1 * x))
+
+class Softmax:
+    def __call__(self, x):
+        e_x = np.e ** (x - np.max(x.value))
+        s_x = (e_x) / ad.reduce_sum(e_x, axis=1, keepdims=True)
+        return s_x
+
+class Tanh:
+    def __call__(self, x):
+        tanh_x = np.tanh(x.value)
+        var = ad.Tensor(tanh_x)
+        var.grads.append(1 - tanh_x ** 2)
+        var.dependencies.append(x)
+
+        return var
 
 class Model:
     def __init__(self, layers):
         self.layers = layers
-        self.initialised = False
-        self.params = []
 
-    def initialise(self):
-        if not self.initialised:
-            for layer in self.layers:
-                params = layer.init_params()
-                if isinstance(layer, RNN):
-                    self.params.append(params[0])
-                    self.params.append(params[1])
-                else:
-                    self.params.append(params)
+    def __call__(self, x):
+        output = x
 
-            self.initialised = True
+        for layer in self.layers:
+            output = layer(output)
 
-    
-    def get_loss(self, x, y, loss_fn, params):
-        pred = self.predict(x, params)
-        loss = loss_fn(y, pred)
+        return output
 
-        return loss
-
-    #@functools.partial(jit, static_argnums=(0, 3, 4, 5, 6))
-    def train(self, x, y, epochs=10, loss=MeanSquaredError, optim=GradientDescent(lr=0.1), batch_size=32):
+    def train(self, x, y, epochs=10, loss_fn = loss.MSE, optimizer=optim.SGD(lr=0.1), batch_size=32):
         for epoch in range(epochs):
-            epoch_loss = 0
-            batches = 0
+            _loss = 0
             for batch in range(0, len(x), batch_size):
-                _loss = self.get_loss(x[batch:batch+batch_size], y[batch:batch+batch_size], loss, self.params)
-                grads = grad(self.get_loss, -1)(x[batch:batch+batch_size], y[batch:batch+batch_size], loss, self.params)
-                self.params = optim(grads, self.params)
-                epoch_loss += _loss
-                batches += 1
-            print (epoch+1, epoch_loss / batches)
+                output = self(x[batch:batch+batch_size])
+                l = loss_fn(output, y[batch:batch+batch_size])
+                optimizer(self, l)
+                _loss += l
             
-    def predict(self, x, params=None):
-        self.initialise()
-
-        params = self.params if params is None else params
-
-        pred = x
-        idx = 0
-        param_idx = 0
-        while idx < len(self.layers):
-            layer, _params = self.layers[idx], params[param_idx]
-            if isinstance(layer, RNN):
-                pred = layer.forward(pred, [_params, params[param_idx+1]])
-                param_idx += 2
-            else:
-                pred = layer.forward(pred, _params)
-                param_idx += 1
-            idx += 1
-            
-
-        return pred
-
-def sigmoid(x):
-    return 1 / (1 + np.exp(-x))
-
-def tanh(x):
-    return np.tanh(x)
-
-def relu(x):
-    return np.maximum(x, np.zeros_like(x))
-
-def softmax(x):
-    max = np.max(x,axis=1,keepdims=True)
-    e_x = np.exp(x - max)
-    sum = np.sum(e_x,axis=1,keepdims=True)
-    f_x = e_x / sum 
-    return f_x
+            print (epoch, _loss)
