@@ -156,6 +156,12 @@ class Tensor:
     def __matmul__(self, other):
         if not (isinstance(other, Tensor)):
             other = Tensor(other, trainable=False)
+        
+        if other.value.ndim == 1:
+            other.value = np.expand_dims(other.value, axis=1)
+
+        if self.value.ndim == 1:
+            self.value = np.expand_dims(self.value, axis=1)
             
         var = Tensor(self.value @ other.value)
         var.dependencies.append(self)
@@ -169,7 +175,13 @@ class Tensor:
     def __rmatmul__(self, other):
         if not (isinstance(other, Tensor)):
             other = Tensor(other, trainable=False)
-            
+        
+        if other.value.ndim == 1:
+            other.value = np.expand_dims(other.value, axis=1)
+
+        if self.value.ndim == 1:
+            self.value = np.expand_dims(self.value, axis=1)
+
         var = Tensor(other.value @ self.value)
         var.dependencies.append(other)
         var.dependencies.append(self)
@@ -242,8 +254,10 @@ class Tensor:
                                 grad = grad.sum(axis=i, keepdims=True)
                     
                     local_grad = local_grad * np.nan_to_num(grad)
+                    
+                    if hasattr(dependency, "reshape_grad"):
+                        local_grad = local_grad.reshape(dependency.reshape_grad)
 
-                
                 dependency.gradient += local_grad
                 dependency.get_gradients(local_grad)
 
@@ -270,8 +284,8 @@ def reduce_sum(tensor, axis = None, keepdims=False):
 
     return var
 
-def reduce_mean(tensor, axis = None):
-    return reduce_sum(tensor, axis) / tensor.value.size
+def reduce_mean(tensor, axis = None, keepdims=False):
+    return reduce_sum(tensor, axis, keepdims) / tensor.value.size
 
 def log(tensor):
     var = Tensor(np.log(tensor.value))
@@ -279,3 +293,44 @@ def log(tensor):
     var.grads.append(1 / tensor.value)
 
     return var
+
+def flatten(tensor):
+    var = Tensor(tensor.value.flatten())
+    var.dependencies.append(tensor)
+    var.grads.append(np.ones_like(var.value))
+    tensor.reshape_grad = tensor.value.shape
+
+    return var
+
+def reshape(tensor, shape):
+    var = Tensor(tensor.value.reshape(*shape))
+    var.dependencies.append(tensor)
+    var.grads.append(np.ones_like(var.value))
+    tensor.reshape_grad = tensor.value.shape
+
+    return var
+    
+def convolve(_filter, stride, x, padding = 0):
+    if not (isinstance(x, Tensor)):
+        x = Tensor(x, trainable=False)
+
+    inp_shape = x.value.shape
+    filter_shape = _filter.value.shape
+
+    output_shape = ((np.asarray(inp_shape) +  2 * padding - (np.asarray(filter_shape) - 1) - 1) // stride) + 1
+    output_shape = output_shape.tolist()
+
+    windows = []
+
+    for row in range(0, inp_shape[0] - 1, stride[0]):
+        for col in range(0, inp_shape[1] - 1, stride[1]):
+            window = x.value[row : row + filter_shape[0], col : col + filter_shape[1]]
+            windows.append(window.flatten())
+
+    windows = np.array(windows).T
+    flat_filter = flatten(_filter)
+
+    feat_map = flat_filter @ windows
+    feat_map = reshape(feat_map, output_shape)
+
+    return feat_map
