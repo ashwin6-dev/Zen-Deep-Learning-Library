@@ -105,8 +105,9 @@ class Conv2D(Layer):
                 self.filter_list.append(ad.Tensor(filter_value))
             
             outputs = []
+
             for _filter in self.filter_list:
-                convolved = ad.convolve(_filter, self.strides, x)
+                convolved = ad.conv2d(_filter, self.strides, x)
                 outputs.append(convolved)
             
             out = ad.stack(outputs)
