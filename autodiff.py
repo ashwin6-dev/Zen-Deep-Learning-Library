@@ -158,11 +158,11 @@ class Tensor:
             other = Tensor(other, trainable=False)
         
         if other.value.ndim == 1:
-            other.value = np.expand_dims(other.value, axis=1)
+            other.value = np.expand_dims(other.value, axis=0)
 
         if self.value.ndim == 1:
-            self.value = np.expand_dims(self.value, axis=1)
-            
+            self.value = np.expand_dims(self.value, axis=0)
+        
         var = Tensor(self.value @ other.value)
         var.dependencies.append(self)
         var.dependencies.append(other)
@@ -177,10 +177,10 @@ class Tensor:
             other = Tensor(other, trainable=False)
         
         if other.value.ndim == 1:
-            other.value = np.expand_dims(other.value, axis=1)
+            other.value = np.expand_dims(other.value, axis=0)
 
         if self.value.ndim == 1:
-            self.value = np.expand_dims(self.value, axis=1)
+            self.value = np.expand_dims(self.value, axis=0)
 
         var = Tensor(other.value @ self.value)
         var.dependencies.append(other)
@@ -231,7 +231,7 @@ class Tensor:
 
         
     def get_gradients(self, grad = None):
-        grad = np.ones_like(self.value) if grad is None else grad
+        grad = 1 if grad is None else grad
         grad = np.float32(grad)
 
         for dependency, _grad in zip(self.dependencies, self.grads):
@@ -310,7 +310,7 @@ def reshape(tensor, shape):
 
     return var
     
-def convolve(_filter, stride, x, padding = 0):
+def conv2d(_filter, stride, x, padding = 0):
     if not (isinstance(x, Tensor)):
         x = Tensor(x, trainable=False)
 
@@ -321,16 +321,36 @@ def convolve(_filter, stride, x, padding = 0):
     output_shape = output_shape.tolist()
 
     windows = []
+    window_indexes = []
 
-    for row in range(0, inp_shape[0] - 1, stride[0]):
-        for col in range(0, inp_shape[1] - 1, stride[1]):
+    for row in range(0, inp_shape[0] - 1, stride):
+        for col in range(0, inp_shape[1] - 1, stride):
             window = x.value[row : row + filter_shape[0], col : col + filter_shape[1]]
             windows.append(window.flatten())
 
-    windows = np.array(windows).T
+            row_indexes = [i for i in range(row, row + filter_shape[0])]
+            col_indexes = [i for i in range(col, col + filter_shape[1])]
+            indexes = [ [r, c] for r in row_indexes for c in col_indexes ]
+            window_indexes.append(indexes)
+
+    windows = Tensor(np.array(windows).T)
+    window_indexes = np.transpose(np.array(window_indexes), axes=(1, 0, 2)).tolist()
     flat_filter = flatten(_filter)
+    
+    x_grad = np.zeros_like(x.value)
+    row_idx = 0
+    for row in window_indexes:
+        for col in row:
+            x_row = col[0]
+            x_col = col[1]
+            x_grad[x_row][x_col] += flat_filter.value[row_idx]
+
+        row_idx += 1
+            
 
     feat_map = flat_filter @ windows
     feat_map = reshape(feat_map, output_shape)
+    feat_map.dependencies = [x, _filter]
+    feat_map.grads = [x_grad, windows.value.T.sum(axis=1, keepdims=True).reshape(filter_shape)]
 
     return feat_map
